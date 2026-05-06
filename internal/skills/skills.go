@@ -30,6 +30,9 @@ const (
 var (
 	namePattern    = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
 	promptReplacer = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;", "'", "&apos;")
+
+	latestStates   []*SkillState
+	latestStatesMu sync.RWMutex
 )
 
 // Skill represents a parsed SKILL.md file.
@@ -73,6 +76,13 @@ var broker = pubsub.NewBroker[Event]()
 // SubscribeEvents returns a channel that receives events when skill discovery state changes.
 func SubscribeEvents(ctx context.Context) <-chan pubsub.Event[Event] {
 	return broker.Subscribe(ctx)
+}
+
+// GetLatestStates returns the latest discovery states.
+func GetLatestStates() []*SkillState {
+	latestStatesMu.RLock()
+	defer latestStatesMu.RUnlock()
+	return slices.Clone(latestStates)
 }
 
 // Validate checks if the skill meets spec requirements.
@@ -252,6 +262,10 @@ func DiscoverWithStates(paths []string) ([]*Skill, []*SkillState) {
 		}
 		return left < right
 	})
+
+	latestStatesMu.Lock()
+	latestStates = states
+	latestStatesMu.Unlock()
 
 	broker.Publish(pubsub.UpdatedEvent, Event{States: states})
 	return skills, states
